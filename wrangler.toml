@@ -1,0 +1,21 @@
+name = "webhookrelayapp"
+main = "src/index.ts"
+compatibility_date = "2026-03-23"
+
+[observability]
+enabled = true
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = true
+
+[durable_objects]
+bindings = [
+  { name = "RELAY_SESSIONS", class_name = "RelaySession" },
+  { name = "POPULARITY", class_name = "Popularity" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RelaySession", "Popularity"]

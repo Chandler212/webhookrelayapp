@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>webhookrelay.app</title>
+    <meta
+      name="description"
+      content="Relay third-party webhooks to your local app in seconds. One outbound wss connection. No tunnel. No reverse proxy."
+    />
+    <link rel="stylesheet" href="/styles.css" />
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <p class="eyebrow">OSS / MIT / PLG</p>
+        <h1>Relay webhooks to localhost in under 5 seconds.</h1>
+        <p class="lede">
+          Pick an app. Copy one tiny listener script. Paste one public webhook URL into the third-party app.
+          That is the whole product.
+        </p>
+
+        <div class="hero-actions">
+          <a class="button button-primary" href="#apps">Browse apps</a>
+          <a class="button" href="/skill.md" target="_blank" rel="noreferrer">Read skill.md</a>
+        </div>
+
+        <ul class="principles">
+          <li>One outbound `wss` connection from your Mac</li>
+          <li>No reverse proxy, no tunnel, no dead ends</li>
+          <li>Short human-readable setup with no npm packages in the listener</li>
+        </ul>
+      </section>
+
+      <section class="meta-bar">
+        <div>
+          <span class="meta-label">Default sort</span>
+          <strong>Rolling 7 day popularity</strong>
+        </div>
+        <div>
+          <span class="meta-label">Local runtime</span>
+          <strong>Node 22+ only, no extra packages</strong>
+        </div>
+        <div>
+          <span class="meta-label">Live cards</span>
+          <strong id="app-count">-</strong>
+        </div>
+      </section>
+
+      <section class="filters" id="apps">
+        <label class="search">
+          <span>Search apps</span>
+          <input id="search-input" type="search" placeholder="Stripe, GitHub, Shopify, Slack..." autocomplete="off" />
+        </label>
+        <p class="filter-copy" id="filter-copy">Loading app catalog...</p>
+      </section>
+
+      <section class="grid" id="app-grid" aria-live="polite"></section>
+    </main>
+
+    <dialog class="modal" id="app-modal">
+      <form method="dialog" class="modal-close">
+        <button aria-label="Close modal">Close</button>
+      </form>
+
+      <div class="modal-header">
+        <p class="eyebrow" id="modal-category">Webhook source</p>
+        <h2 id="modal-title">Loading…</h2>
+        <p id="modal-subtitle">
+          Generate a fresh relay session, point it at your local URL, run the listener, then paste the webhook URL into your app.
+        </p>
+      </div>
+
+      <label class="local-url-field">
+        <span>Local URL</span>
+        <input id="local-url-input" type="url" spellcheck="false" value="http://127.0.0.1:3000/webhook" />
+      </label>
+
+      <div class="status" id="modal-status">Creating your relay session…</div>
+
+      <section class="snippet-card">
+        <div class="snippet-head">
+          <h3>Listener script</h3>
+          <button class="copy-button" id="copy-script">Copy</button>
+        </div>
+        <p class="snippet-copy">Save this as `relay.mjs`, then run `node relay.mjs`.</p>
+        <pre><code id="listener-script"></code></pre>
+      </section>
+
+      <section class="snippet-card">
+        <div class="snippet-head">
+          <h3>Webhook URL</h3>
+          <button class="copy-button" id="copy-hook">Copy</button>
+        </div>
+        <pre><code id="hook-url"></code></pre>
+      </section>
+
+      <section class="snippet-card">
+        <div class="snippet-head">
+          <h3>`curl` smoke test</h3>
+          <button class="copy-button" id="copy-curl">Copy</button>
+        </div>
+        <p class="snippet-copy">Run this after your local app and listener are both up.</p>
+        <pre><code id="curl-command"></code></pre>
+      </section>
+    </dialog>
+  </body>
+</html>

@@ -1,0 +1,20 @@
+{
+  "name": "webhookrelayapp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "sync:skill": "node scripts/sync-skill.mjs",
+    "build": "npm run sync:skill",
+    "dev": "npm run sync:skill && wrangler dev",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run typecheck",
+    "deploy": "npm run sync:skill && wrangler deploy"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260317.1",
+    "typescript": "^6.0.2",
+    "wrangler": "^4.76.0"
+  }
+}
