@@ -4,13 +4,25 @@
   "private": true,
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Chandler212/webhookrelayapp.git"
+  },
+  "homepage": "https://webhookrelay.app",
+  "bugs": {
+    "url": "https://github.com/Chandler212/webhookrelayapp/issues"
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "sync:skill": "node scripts/sync-skill.mjs",
     "build": "npm run sync:skill",
     "dev": "npm run sync:skill && wrangler dev",
     "typecheck": "tsc --noEmit",
     "test": "npm run typecheck",
-    "deploy": "npm run sync:skill && wrangler deploy"
+    "deploy": "npm run sync:skill && wrangler deploy",
+    "listen:local": "node scripts/local-webhook-listener.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260317.1",

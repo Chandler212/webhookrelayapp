@@ -1,7 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 
 import { json } from "../lib/http";
-import type { RelayDispatchResult, RelayEnvelope, RelayResponseMessage } from "../lib/protocol";
+import type { RelayDispatchResult, RelayEnvelope, RelayResponseMessage, RelaySessionStatus } from "../lib/protocol";
 import { RESPONSE_TIMEOUT_MS } from "../lib/protocol";
 
 type PendingRequest = {
@@ -10,6 +10,16 @@ type PendingRequest = {
 };
 
 const textDecoder = new TextDecoder();
+
+function envelopeIsSmoke(headers: Record<string, string>): boolean {
+  for (const [key, value] of Object.entries(headers)) {
+    if (key.toLowerCase() === "x-webhookrelay-smoke" && value === "1") {
+      return true;
+    }
+  }
+
+  return false;
+}
 
 function readSocketMessage(message: string | ArrayBuffer | ArrayBufferView): string {
   if (typeof message === "string") {
@@ -26,6 +36,12 @@ function readSocketMessage(message: string | ArrayBuffer | ArrayBufferView): str
 export class RelaySession extends DurableObject {
   private listener: WebSocket | null;
   private pending = new Map<string, PendingRequest>();
+  private lastActivityAt: number | null = null;
+  private ingressAt: number | null = null;
+  private ingressSmokeAt: number | null = null;
+  private ingressLiveAt: number | null = null;
+  private forwardedAt: number | null = null;
+  private listenerReplyAt: number | null = null;
 
   constructor(ctx: DurableObjectState, env: any) {
     super(ctx, env);
@@ -48,6 +64,10 @@ export class RelaySession extends DurableObject {
 
     if (request.method === "POST" && url.pathname === "/dispatch") {
       return this.handleDispatch(request);
+    }
+
+    if (request.method === "GET" && url.pathname === "/status") {
+      return this.handleStatus();
     }
 
     return json({ ok: false, error: "Not found." }, { status: 404 });
@@ -73,7 +93,36 @@ export class RelaySession extends DurableObject {
     });
   }
 
+  private latchIngress(envelope: RelayEnvelope): void {
+    const now = Date.now();
+    this.lastActivityAt = now;
+
+    if (this.ingressAt === null) {
+      this.ingressAt = now;
+    }
+
+    const smoke = envelopeIsSmoke(envelope.headers);
+
+    if (smoke && this.ingressSmokeAt === null) {
+      this.ingressSmokeAt = now;
+    }
+
+    if (!smoke && this.ingressLiveAt === null) {
+      this.ingressLiveAt = now;
+    }
+  }
+
   private async handleDispatch(request: Request): Promise<Response> {
+    let envelope: RelayEnvelope;
+
+    try {
+      envelope = (await request.json()) as RelayEnvelope;
+    } catch {
+      return json({ ok: false, error: "Invalid dispatch body." } satisfies RelayDispatchResult, { status: 400 });
+    }
+
+    this.latchIngress(envelope);
+
     if (!this.listener || this.listener.readyState !== WebSocket.OPEN) {
       this.listener = null;
       return json(
@@ -85,12 +134,11 @@ export class RelaySession extends DurableObject {
       );
     }
 
-    const envelope = (await request.json()) as RelayEnvelope;
-
     try {
       const result = await new Promise<RelayDispatchResult>((resolve) => {
         const timer = setTimeout(() => {
           this.pending.delete(envelope.id);
+          this.lastActivityAt = Date.now();
           resolve({
             ok: false,
             error: "The local listener did not answer in time.",
@@ -98,12 +146,19 @@ export class RelaySession extends DurableObject {
         }, RESPONSE_TIMEOUT_MS);
 
         this.pending.set(envelope.id, { resolve, timer });
+
+        if (this.forwardedAt === null) {
+          this.forwardedAt = Date.now();
+        }
+
         this.listener?.send(JSON.stringify(envelope));
       });
 
+      this.lastActivityAt = Date.now();
       return json(result, { status: result.ok ? 200 : 504 });
     } catch {
       this.pending.delete(envelope.id);
+      this.lastActivityAt = Date.now();
 
       return json(
         {
@@ -113,6 +168,28 @@ export class RelaySession extends DurableObject {
         { status: 503 },
       );
     }
+  }
+
+  private handleStatus(): Response {
+    const connected = Boolean(this.listener && this.listener.readyState === WebSocket.OPEN);
+
+    if (!connected) {
+      this.listener = null;
+    }
+
+    return json(
+      {
+        ok: true,
+        connected,
+        inFlightCount: this.pending.size,
+        lastActivityAt: this.lastActivityAt,
+        ingressAt: this.ingressAt,
+        ingressSmokeAt: this.ingressSmokeAt,
+        ingressLiveAt: this.ingressLiveAt,
+        forwardedAt: this.forwardedAt,
+        listenerReplyAt: this.listenerReplyAt,
+      } satisfies RelaySessionStatus,
+    );
   }
 
   webSocketMessage(_ws: WebSocket, message: string | ArrayBuffer | ArrayBufferView): void {
@@ -134,8 +211,14 @@ export class RelaySession extends DurableObject {
       return;
     }
 
+    this.lastActivityAt = Date.now();
     clearTimeout(pending.timer);
     this.pending.delete(parsed.id);
+
+    if (this.listenerReplyAt === null) {
+      this.listenerReplyAt = Date.now();
+    }
+
     pending.resolve({
       ok: true,
       status: parsed.status,

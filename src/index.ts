@@ -3,12 +3,13 @@ import { Popularity } from "./durable/Popularity";
 import { RelaySession } from "./durable/RelaySession";
 import { createHookId, createWsToken, readHookId, verifyWsToken } from "./lib/auth";
 import { errorResponse, fromBase64, json, sanitizeRequestHeaders, sanitizeResponseHeaders, toBase64 } from "./lib/http";
+import { enforceGlobalAndIpLimits, enforceHookLimit, type RateLimitEnv } from "./lib/rateLimit";
 import type { RelayDispatchResult, RelayEnvelope } from "./lib/protocol";
 import { MAX_WEBHOOK_BYTES } from "./lib/protocol";
 
 export { Popularity, RelaySession };
 
-export interface Env {
+export interface Env extends RateLimitEnv {
   ASSETS: Fetcher;
   POPULARITY: DurableObjectNamespace;
   RELAY_SESSIONS: DurableObjectNamespace;
@@ -126,6 +127,12 @@ async function handleSession(request: Request, env: Env, ctx: ExecutionContext, 
     return errorResponse(500, "missing_signing_key", "The relay signing key is not configured.", "Set RELAY_SIGNING_KEY, then retry.", requestId);
   }
 
+  const rateLimited = await enforceGlobalAndIpLimits(env, request, requestId);
+
+  if (rateLimited) {
+    return rateLimited;
+  }
+
   const body = (await request.json().catch(() => null)) as { appId?: string } | null;
   const appId = body?.appId?.trim();
 
@@ -154,7 +161,7 @@ async function handleSession(request: Request, env: Env, ctx: ExecutionContext, 
       wsUrl: `${wsOriginFor(request).replace(/\/$/, "")}/ws/${encodeURIComponent(hookId)}?token=${encodeURIComponent(wsToken)}`,
       wsToken,
       listenerRuntime: "node-22+",
-      expiresInHours: 24,
+      wsTokenExpiresInHours: 24,
     },
   });
 }
@@ -168,6 +175,12 @@ async function handleSocket(request: Request, env: Env, requestId: string): Prom
 
   if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
     return errorResponse(426, "upgrade_required", "Use a websocket client for this route.", "Run the listener script from the modal, then try again.", requestId);
+  }
+
+  const rateLimited = await enforceGlobalAndIpLimits(env, request, requestId);
+
+  if (rateLimited) {
+    return rateLimited;
   }
 
   const hookId = parseHookIdFromPath(new URL(request.url).pathname);
@@ -186,8 +199,54 @@ async function handleSocket(request: Request, env: Env, requestId: string): Prom
     return errorResponse(401, "bad_token", "That listener token is invalid or expired.", "Create a fresh session from the homepage, then rerun the listener script.", requestId);
   }
 
+  const hookLimited = await enforceHookLimit(env, requestId, hookId);
+
+  if (hookLimited) {
+    return hookLimited;
+  }
+
   const stub = env.RELAY_SESSIONS.get(env.RELAY_SESSIONS.idFromName(hookId));
   return stub.fetch(new Request("https://relay.internal/socket", request));
+}
+
+async function handleSessionStatus(request: Request, env: Env, requestId: string): Promise<Response> {
+  const signingKey = getSigningKey(env, request);
+
+  if (!signingKey) {
+    return errorResponse(500, "missing_signing_key", "The relay signing key is not configured.", "Set RELAY_SIGNING_KEY, then retry.", requestId);
+  }
+
+  const rateLimited = await enforceGlobalAndIpLimits(env, request, requestId);
+
+  if (rateLimited) {
+    return rateLimited;
+  }
+
+  const url = new URL(request.url);
+  const hookId = url.searchParams.get("hookId")?.trim();
+
+  if (!hookId) {
+    return errorResponse(400, "missing_hook", "That listener status request is missing a hook ID.", "Create a fresh session from the homepage, then try again.", requestId);
+  }
+
+  if (!(await readHookId(signingKey, hookId))) {
+    return errorResponse(404, "unknown_hook", "That listener URL is no longer valid.", "Generate a fresh session from the homepage, then try again.", requestId);
+  }
+
+  const token = extractWsToken(request);
+
+  if (!token || !(await verifyWsToken(signingKey, hookId, token))) {
+    return errorResponse(401, "bad_token", "That listener token is invalid or expired.", "Create a fresh session from the homepage, then rerun the listener command.", requestId);
+  }
+
+  const hookLimited = await enforceHookLimit(env, requestId, hookId);
+
+  if (hookLimited) {
+    return hookLimited;
+  }
+
+  const stub = env.RELAY_SESSIONS.get(env.RELAY_SESSIONS.idFromName(hookId));
+  return stub.fetch("https://relay.internal/status");
 }
 
 async function handleWebhook(request: Request, env: Env, requestId: string): Promise<Response> {
@@ -201,6 +260,12 @@ async function handleWebhook(request: Request, env: Env, requestId: string): Pro
     return errorResponse(405, "method_not_allowed", "That webhook method is not supported.", "Send the webhook with a standard HTTP method, then try again.", requestId);
   }
 
+  const rateLimited = await enforceGlobalAndIpLimits(env, request, requestId);
+
+  if (rateLimited) {
+    return rateLimited;
+  }
+
   const hookId = parseHookIdFromPath(new URL(request.url).pathname);
 
   if (!hookId) {
@@ -211,6 +276,12 @@ async function handleWebhook(request: Request, env: Env, requestId: string): Pro
 
   if (!hook) {
     return errorResponse(404, "unknown_hook", "That webhook URL is no longer valid.", "Create a fresh session from the homepage, then paste the new URL into your app.", requestId);
+  }
+
+  const hookLimited = await enforceHookLimit(env, requestId, hookId);
+
+  if (hookLimited) {
+    return hookLimited;
   }
 
   const app = appById.get(hook.appId);
@@ -279,10 +350,21 @@ async function handleWebhook(request: Request, env: Env, requestId: string): Pro
     headers.set("content-type", "text/plain; charset=utf-8");
   }
 
-  const body =
-    request.method === "HEAD" || !result.body
-      ? null
-      : new Blob([fromBase64(result.body)]);
+  let body: Blob | null = null;
+
+  if (request.method !== "HEAD" && result.body) {
+    try {
+      body = new Blob([fromBase64(result.body)]);
+    } catch {
+      return errorResponse(
+        502,
+        "invalid_listener_body",
+        "The local listener returned a response body that could not be decoded.",
+        "Fix the listener or retry with a simpler response body, then send the webhook again.",
+        requestId,
+      );
+    }
+  }
 
   return new Response(body, {
     status: result.status ?? 200,
@@ -308,6 +390,10 @@ async function routeRequest(request: Request, env: Env, ctx: ExecutionContext, r
 
   if (request.method === "POST" && url.pathname === "/api/sessions") {
     return handleSession(request, env, ctx, requestId);
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/session-status") {
+    return handleSessionStatus(request, env, requestId);
   }
 
   if (url.pathname.startsWith("/ws/")) {

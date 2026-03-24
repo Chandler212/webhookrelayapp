@@ -29,3 +29,20 @@ export interface RelayDispatchResult {
   body?: string;
   error?: string;
 }
+
+export interface RelaySessionStatus {
+  ok: true;
+  connected: boolean;
+  inFlightCount: number;
+  lastActivityAt: number | null;
+  /** First HTTP webhook accepted at /h/:id (dispatch entered). */
+  ingressAt: number | null;
+  /** First ingress that carried X-Webhookrelay-Smoke: 1. */
+  ingressSmokeAt: number | null;
+  /** First ingress without the smoke header. */
+  ingressLiveAt: number | null;
+  /** First time an envelope was sent to the listener WebSocket. */
+  forwardedAt: number | null;
+  /** First WebSocket `response` from the listener for a pending dispatch. */
+  listenerReplyAt: number | null;
+}

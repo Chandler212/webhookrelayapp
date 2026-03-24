@@ -5,13 +5,15 @@ export interface AppCatalogItem {
   category: string;
   featuredRank: number;
   docsUrl?: string;
+  /** Omitted from the default grid; surfaced when search has no catalog hits. */
+  hiddenFromGrid?: boolean;
 }
 
 const docsByName: Record<string, string> = {
   Stripe: "https://docs.stripe.com/webhooks",
   GitHub: "https://docs.github.com/en/webhooks",
   Shopify: "https://shopify.dev/docs/apps/build/webhooks",
-  Slack: "https://api.slack.com/apis/web-api/using-the-conversations-api#events",
+  Slack: "https://api.slack.com/apis/events-api",
   HubSpot: "https://developers.hubspot.com/docs/api/webhooks",
   Twilio: "https://www.twilio.com/docs/usage/webhooks",
   Vercel: "https://vercel.com/docs/webhooks",
@@ -311,7 +313,10 @@ function slugify(value: string): string {
 
 const seenIds = new Map<string, number>();
 
-export const APPS: AppCatalogItem[] = Object.entries(appGroups).flatMap(([category, names]) =>
+/** Stable id for the synthetic “Create App” card (session + popularity). */
+export const CUSTOM_APP_ID = "custom";
+
+const catalogApps: AppCatalogItem[] = Object.entries(appGroups).flatMap(([category, names]) =>
   names.map((name) => {
     const baseId = slugify(name);
     const nextCount = (seenIds.get(baseId) ?? 0) + 1;
@@ -330,5 +335,17 @@ export const APPS: AppCatalogItem[] = Object.entries(appGroups).flatMap(([catego
   ...app,
   featuredRank: index,
 }));
+
+export const APPS: AppCatalogItem[] = [
+  ...catalogApps,
+  {
+    id: CUSTOM_APP_ID,
+    name: "Create App",
+    slug: "create-app",
+    category: "Your application",
+    featuredRank: 999_999,
+    hiddenFromGrid: true,
+  },
+];
 
 export const appById = new Map(APPS.map((app) => [app.id, app]));

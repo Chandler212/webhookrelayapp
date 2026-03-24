@@ -89,8 +89,15 @@ async function sign(secret: string, purpose: string, payload: string): Promise<U
 }
 
 async function verify(secret: string, purpose: string, payload: string, signature: string): Promise<boolean> {
+  let actual: Uint8Array;
+
+  try {
+    actual = fromBase64Url(signature);
+  } catch {
+    return false;
+  }
+
   const expected = await sign(secret, purpose, payload);
-  const actual = fromBase64Url(signature);
   return constantTimeEqual(expected, actual);
 }
 
@@ -159,5 +166,5 @@ export async function verifyWsToken(secret: string, hookId: string, token: strin
     return false;
   }
 
-  return verify(secret, "ws", payload, signature);
+  return await verify(secret, "ws", payload, signature);
 }

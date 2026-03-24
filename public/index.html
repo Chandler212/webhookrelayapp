@@ -6,7 +6,7 @@
     <title>webhookrelay.app</title>
     <meta
       name="description"
-      content="Relay third-party webhooks to your local app in seconds. One outbound wss connection. No tunnel. No reverse proxy."
+      content="Relay webhooks to localhost over one outbound wss. No tunnel. No payload archive—open source, in-memory relay (see repo)."
     />
     <link rel="stylesheet" href="/styles.css" />
     <script type="module" src="/app.js"></script>
@@ -17,8 +17,8 @@
         <p class="eyebrow">OSS / MIT / PLG</p>
         <h1>Relay webhooks to localhost in under 5 seconds.</h1>
         <p class="lede">
-          Pick an app. Copy one tiny listener script. Paste one public webhook URL into the third-party app.
-          That is the whole product.
+          Pick an app. Paste one public webhook URL into the third-party app. Run one local listener in Terminal A.
+          Traffic relays in memory—no server-side event archive (see README). Use Terminal B only if you want <em>that smoke</em> test.
         </p>
 
         <div class="hero-actions">
@@ -64,45 +64,161 @@
         <button aria-label="Close modal">Close</button>
       </form>
 
+      <div class="modal-pipeline" id="modal-pipeline" hidden aria-live="polite">
+        <div class="modal-steps" id="modal-steps" role="list" aria-label="Setup steps">
+          <button class="modal-step" id="modal-step-1" type="button" data-step="1" role="listitem">
+            <span class="modal-step-number" id="modal-step-1-number">1</span>
+            <span class="modal-step-copy">
+              <strong>Paste into your app</strong>
+              <span id="modal-step-1-copy">Copy the webhook URL into your app.</span>
+            </span>
+          </button>
+          <button class="modal-step" id="modal-step-2" type="button" data-step="2" role="listitem">
+            <span class="modal-step-number" id="modal-step-2-number">2</span>
+            <span class="modal-step-copy">
+              <strong>Confirm local URL</strong>
+              <span id="modal-step-2-copy">Confirm your local port and path.</span>
+            </span>
+          </button>
+          <button class="modal-step" id="modal-step-3" type="button" data-step="3" role="listitem">
+            <span class="modal-step-number" id="modal-step-3-number">3</span>
+            <span class="modal-step-copy">
+              <strong>Run Terminal A</strong>
+              <span id="modal-step-3-copy">Paste the listener command, then wait for the connection.</span>
+            </span>
+          </button>
+          <button class="modal-step" id="modal-step-4" type="button" data-step="4" role="listitem">
+            <span class="modal-step-number" id="modal-step-4-number">4</span>
+            <span class="modal-step-copy">
+              <strong>Smoke test</strong>
+              <span id="modal-step-4-copy">Run the smoke test curl in Terminal B.</span>
+            </span>
+          </button>
+        </div>
+        <p class="modal-pipeline-title">Relay path</p>
+        <div class="modal-pipeline-track" role="list">
+          <span class="pipe-node" id="pipe-source" role="listitem">…</span>
+          <span class="pipe-edge" id="pipe-edge-ingress" role="presentation" data-done="false" title="Webhook reached webhookrelay">→</span>
+          <span class="pipe-node pipe-node-relay" id="pipe-relay" role="listitem">…</span>
+          <span class="pipe-edge" id="pipe-edge-ws" role="presentation" data-done="false" title="Listener WebSocket connected">←</span>
+          <span class="pipe-edge" id="pipe-edge-forward" role="presentation" data-done="false" title="Relay forwarded to Terminal A">→</span>
+          <span class="pipe-node" id="pipe-terminal" role="listitem">Terminal A</span>
+          <span class="pipe-edge" id="pipe-edge-local" role="presentation" data-done="false" title="Listener replied over WebSocket">→</span>
+          <span class="pipe-node pipe-node-local" id="pipe-local" role="listitem">…</span>
+        </div>
+      </div>
+
       <div class="modal-header">
         <p class="eyebrow" id="modal-category">Webhook source</p>
         <h2 id="modal-title">Loading…</h2>
         <p id="modal-subtitle">
-          Generate a fresh relay session, point it at your local URL, run the listener, then paste the webhook URL into your app.
+          Copy the webhook URL, confirm your local URL, connect Terminal A, then run the smoke test in Terminal B.
         </p>
       </div>
 
-      <label class="local-url-field">
-        <span>Local URL</span>
-        <input id="local-url-input" type="url" spellcheck="false" value="http://127.0.0.1:3000/webhook" />
-      </label>
+      <section class="snippet-card step-card" id="hook-section" data-step="1" data-step-state="current">
+        <div class="snippet-head">
+          <div class="snippet-title-group">
+            <span class="step-kicker">Step 1</span>
+            <h3>Webhook URL</h3>
+          </div>
+        </div>
+        <p class="snippet-copy">Copy and paste this webhook URL into your third-party app. We’ll move you to step 2 after a short beat so you have time to paste it.</p>
+        <div class="code-blob">
+          <button class="code-blob-copy" id="copy-hook" type="button" aria-label="Copy webhook URL" title="Copy">
+            <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" />
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h5a2 2 0 0 1 2 2v1" />
+            </svg>
+          </button>
+          <pre class="code-blob-pre"><code id="hook-url"></code></pre>
+        </div>
+      </section>
+
+      <section class="snippet-card step-card" id="local-url-section" data-step="2" data-step-state="upcoming">
+        <div class="snippet-head">
+          <div class="snippet-title-group">
+            <span class="step-kicker">Step 2</span>
+            <h3>Confirm local port and URL</h3>
+          </div>
+          <button class="copy-button" id="confirm-local-url" type="button">Confirm</button>
+        </div>
+        <p class="snippet-copy">Make sure this matches the route your app is listening on before you start Terminal A.</p>
+        <label class="local-url-field">
+          <span>Local URL</span>
+          <input id="local-url-input" type="url" spellcheck="false" value="http://localhost:3000/api/webhook" />
+        </label>
+      </section>
 
       <div class="status" id="modal-status">Creating your relay session…</div>
 
-      <section class="snippet-card">
+      <section class="snippet-card step-card" id="terminal-a-section" data-step="3" data-step-state="upcoming">
         <div class="snippet-head">
-          <h3>Listener script</h3>
-          <button class="copy-button" id="copy-script">Copy</button>
+          <div class="snippet-title-group">
+            <span class="step-kicker">Step 3</span>
+            <h3>Terminal A · Listener command</h3>
+          </div>
+          <div class="snippet-actions">
+            <button class="copy-button" id="toggle-comments" type="button" aria-pressed="false">Show comments</button>
+          </div>
         </div>
-        <p class="snippet-copy">Save this as `relay.mjs`, then run `node relay.mjs`.</p>
-        <pre><code id="listener-script"></code></pre>
+        <p class="snippet-copy">Run this in Terminal A after you confirm the local URL. We’ll move you to step 4 as soon as the relay connects.</p>
+        <div class="listener-live" id="listener-live" data-state="waiting" aria-live="polite">
+          <span class="listener-spinner" aria-hidden="true"></span>
+          <div class="listener-live-copy">
+            <strong id="listener-live-label">Waiting for Terminal A</strong>
+            <span id="listener-live-meta">Stop listening later with Ctrl+C in Terminal A.</span>
+          </div>
+        </div>
+        <div class="code-blob">
+          <button class="code-blob-copy" id="copy-script" type="button" aria-label="Copy listener command" title="Copy">
+            <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" />
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h5a2 2 0 0 1 2 2v1" />
+            </svg>
+          </button>
+          <pre class="code-blob-pre"><code id="listener-script"></code></pre>
+        </div>
+        <div class="cli-option">
+          <div class="snippet-head">
+            <h3 class="cli-title">Optional thin CLI</h3>
+            <div class="snippet-actions">
+              <a class="copy-button" id="download-cli" href="/cli/webhookrelay.mjs" download>Download</a>
+              <a class="copy-button" id="view-cli-source" href="#" target="_blank" rel="noreferrer">GitHub source</a>
+            </div>
+          </div>
+          <p class="snippet-copy">Prefer a checked-in file over the pasted blob? Download it from this site with `curl`, inspect it on GitHub, then run it with the same live relay URL.</p>
+          <div class="code-blob">
+            <button class="code-blob-copy" id="copy-cli" type="button" aria-label="Copy CLI curl runner" title="Copy">
+              <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h5a2 2 0 0 1 2 2v1" />
+              </svg>
+            </button>
+            <pre class="code-blob-pre"><code id="cli-command"></code></pre>
+          </div>
+        </div>
       </section>
 
-      <section class="snippet-card">
+      <section class="snippet-card step-card" id="terminal-b-section" data-step="4" data-step-state="upcoming">
         <div class="snippet-head">
-          <h3>Webhook URL</h3>
-          <button class="copy-button" id="copy-hook">Copy</button>
+          <div class="snippet-title-group">
+            <span class="step-kicker">Step 4</span>
+            <h3>Terminal B · `curl` smoke test</h3>
+          </div>
         </div>
-        <pre><code id="hook-url"></code></pre>
-      </section>
-
-      <section class="snippet-card">
-        <div class="snippet-head">
-          <h3>`curl` smoke test</h3>
-          <button class="copy-button" id="copy-curl">Copy</button>
+        <p class="snippet-copy">
+          Run this in Terminal B after Terminal A is listening. You should get HTTP 200 with a short JSON summary: success if your app handled the route, or a clear message if nothing is reachable or the path 404s. Copy-paste commands are listed one per line under <code>nextSteps</code> (not a single string with <code>\n</code> escapes).
+        </p>
+        <div class="code-blob">
+          <button class="code-blob-copy" id="copy-curl" type="button" aria-label="Copy curl smoke test" title="Copy">
+            <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" />
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h5a2 2 0 0 1 2 2v1" />
+            </svg>
+          </button>
+          <pre class="code-blob-pre"><code id="curl-command"></code></pre>
         </div>
-        <p class="snippet-copy">Run this after your local app and listener are both up.</p>
-        <pre><code id="curl-command"></code></pre>
       </section>
     </dialog>
   </body>
