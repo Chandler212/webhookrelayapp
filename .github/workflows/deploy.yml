@@ -1,9 +1,8 @@
+# Manual Cloudflare deploy only (Actions → Deploy workflow → Run workflow).
+# Pushes to main do not deploy; use `npm run deploy` locally or trigger this job after adding secrets.
 name: Deploy
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 jobs:

@@ -97,7 +97,7 @@ Set the signing secret before deploying (stored in **Cloudflare**, not in this r
 wrangler secret put RELAY_SIGNING_KEY
 ```
 
-**GitHub Actions** ([`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)) uses `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets. **`RELAY_SIGNING_KEY` is not passed from GitHub**—set it with `wrangler secret put` (or the dashboard) on your Worker.
+**GitHub Actions** ([`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)) can deploy from the repo **Actions** tab (**Run workflow**). It does **not** run on push to `main`. Add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets if you use it. **`RELAY_SIGNING_KEY` is not passed from GitHub**—set it with `wrangler secret put` (or the dashboard) on your Worker. Otherwise deploy with `npm run deploy` locally.
 
 Then deploy:
 
